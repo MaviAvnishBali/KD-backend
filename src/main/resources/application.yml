@@ -1,0 +1,238 @@
+spring:
+  application:
+    name: kila-darbar-api
+
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5434/kiladarbar}
+    username: ${DB_USERNAME:kiladarbar}
+    password: ${DB_PASSWORD:kiladarbar123}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 2
+
+  # elasticsearch:  # Disabled for local dev; re-enable with ES running
+  #   uris: ${ES_URI:http://localhost:9200}
+  #   username: ${ES_USERNAME:}
+  #   password: ${ES_PASSWORD:}
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration
+
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 300000  # 5 minutes default
+
+  websocket:
+    message-broker:
+      relay-host: localhost
+      relay-port: 61613
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /api
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/plain
+  error:
+    include-message: never
+    include-binding-errors: never
+
+# Application Configuration
+app:
+  name: Kila Darbar
+  base-url: ${APP_BASE_URL:http://localhost:8080}
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  admin-url: ${ADMIN_URL:http://localhost:3001}
+
+  jwt:
+    secret: ${JWT_SECRET:kiladarbar-super-secret-jwt-key-change-in-production-2025}
+    access-token-expiry: 86400000    # 24 hours
+    refresh-token-expiry: 2592000000  # 30 days
+
+  otp:
+    expiry-minutes: 5
+    max-attempts: 5
+    length: 6
+
+  razorpay:
+    key-id: ${RAZORPAY_KEY_ID:}
+    key-secret: ${RAZORPAY_KEY_SECRET:}
+    webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
+
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
+  aws:
+    region: ${AWS_REGION:ap-south-1}
+    s3:
+      bucket: ${S3_BUCKET:kiladarbar-media}
+      cdn-url: ${CDN_URL:}
+    access-key: ${AWS_ACCESS_KEY:}
+    secret-key: ${AWS_SECRET_KEY:}
+
+  firebase:
+    credentials-path: ${FIREBASE_CREDENTIALS_PATH:classpath:firebase-service-account.json}
+
+  sms:
+    provider: ${SMS_PROVIDER:MSG91}
+    api-key: ${SMS_API_KEY:}
+    sender-id: ${SMS_SENDER_ID:KLDRBA}
+    template-id:
+      otp: ${SMS_OTP_TEMPLATE_ID:}
+      order-confirmed: ${SMS_ORDER_TEMPLATE_ID:}
+
+  whatsapp:
+    api-url: ${WHATSAPP_API_URL:https://api.whatsapp.com/v1}
+    access-token: ${WHATSAPP_TOKEN:}
+    phone-number-id: ${WHATSAPP_PHONE_ID:}
+
+  google:
+    maps-api-key: ${GOOGLE_MAPS_API_KEY:}
+    client-id: ${GOOGLE_CLIENT_ID:}
+    client-secret: ${GOOGLE_CLIENT_SECRET:}
+
+  loyalty:
+    points-per-rupee: 0.1   # 1 point per ₹10
+    rupees-per-point: 0.10  # 100 points = ₹10
+    tiers:
+      bronze-min: 0
+      silver-min: 1000
+      gold-min: 5000
+      platinum-min: 15000
+
+  delivery:
+    base-charge: 30.00
+    charge-per-km: 5.00
+    free-delivery-above: 500.00
+    max-radius-km: 10.0
+    assignment-timeout-minutes: 3
+    estimated-prep-minutes: 20
+    estimated-speed-kmh: 25
+
+  pagination:
+    default-page-size: 20
+    max-page-size: 100
+
+# Logging
+logging:
+  level:
+    com.kiladarbar: ${LOG_LEVEL:INFO}
+    org.springframework.security: WARN
+    org.hibernate.SQL: ${SQL_LOG_LEVEL:WARN}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,flyway
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# OpenAPI
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  info:
+    title: Kila Darbar API
+    version: 1.0.0
+    description: Complete Restaurant Management System API
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  jpa:
+    show-sql: true
+  flyway:
+    clean-disabled: false
+
+logging:
+  level:
+    com.kiladarbar: DEBUG
+    org.hibernate.SQL: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    hikari:
+      maximum-pool-size: 50
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    com.kiladarbar: INFO
