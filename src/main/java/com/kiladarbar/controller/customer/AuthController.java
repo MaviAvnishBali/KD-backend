@@ -4,6 +4,7 @@ import com.kiladarbar.dto.request.*;
 import com.kiladarbar.dto.response.ApiResponse;
 import com.kiladarbar.dto.response.AuthResponse;
 import com.kiladarbar.service.AuthService;
+import com.kiladarbar.service.impl.AuthServiceImpl;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -12,21 +13,22 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/v1/auth")
 @RequiredArgsConstructor
 @Tag(name = "Authentication", description = "OTP, OAuth, and session management")
 public class AuthController {
 
-    private final AuthService authService;
+    private final AuthService     authService;
+    private final AuthServiceImpl authServiceImpl; // for Firebase-specific methods
 
-    @PostMapping("/otp/send")
+    @PostMapping({"/send-otp", "/otp/send"})
     @Operation(summary = "Send OTP to mobile number")
     public ResponseEntity<ApiResponse<Void>> sendOtp(@Valid @RequestBody OtpSendRequest request) {
         authService.sendOtp(request.getPhone(), "LOGIN");
         return ResponseEntity.ok(ApiResponse.success("OTP sent successfully"));
     }
 
-    @PostMapping("/otp/verify")
+    @PostMapping({"/verify-otp", "/otp/verify"})
     @Operation(summary = "Verify OTP and get tokens")
     public ResponseEntity<ApiResponse<AuthResponse>> verifyOtp(@Valid @RequestBody OtpVerifyRequest request) {
         AuthResponse response = authService.verifyOtp(request.getPhone(), request.getOtp());
@@ -40,7 +42,7 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    @PostMapping("/refresh")
+    @PostMapping({"/refresh-token", "/refresh"})
     @Operation(summary = "Refresh access token")
     public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
         AuthResponse response = authService.refreshToken(request.getRefreshToken());
@@ -59,5 +61,15 @@ public class AuthController {
     public ResponseEntity<ApiResponse<AuthResponse>> guestLogin(@Valid @RequestBody GuestLoginRequest request) {
         AuthResponse response = authService.createGuestSession(request.getPhone());
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /** Called after Firebase Phone Auth — client sends the Firebase ID token */
+    @PostMapping("/firebase-phone")
+    @Operation(summary = "Verify Firebase Phone Auth token")
+    public ResponseEntity<ApiResponse<AuthResponse>> firebasePhone(
+            @RequestBody java.util.Map<String, String> body) {
+        String token = body.get("firebaseIdToken");
+        if (token == null || token.isBlank()) throw new com.kiladarbar.exception.BusinessException("firebaseIdToken required");
+        return ResponseEntity.ok(ApiResponse.success(authServiceImpl.verifyFirebasePhone(token)));
     }
 }

@@ -7,6 +7,11 @@ import lombok.Data;
 @Data
 public class OtpSendRequest {
     @NotBlank
-    @Pattern(regexp = "^[6-9]\\d{9}$", message = "Invalid Indian mobile number")
+    @Pattern(
+        regexp  = "^(\\+91[6-9]\\d{9}|[6-9]\\d{9})$",
+        message = "Phone must be a valid Indian number (10 digits or +91 prefix)"
+    )
     private String phone;
+
+    private String purpose = "LOGIN";
 }

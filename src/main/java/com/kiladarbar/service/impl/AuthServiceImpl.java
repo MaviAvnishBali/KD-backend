@@ -2,9 +2,11 @@ package com.kiladarbar.service.impl;
 
 import com.kiladarbar.dto.response.AuthResponse;
 import com.kiladarbar.exception.BusinessException;
-import com.kiladarbar.model.entity.User;
 import com.kiladarbar.model.entity.Role;
+import com.kiladarbar.model.entity.User;
+import com.kiladarbar.repository.RoleRepository;
 import com.kiladarbar.repository.UserRepository;
+import com.kiladarbar.security.firebase.FirebaseTokenVerifier;
 import com.kiladarbar.security.jwt.JwtService;
 import com.kiladarbar.service.AuthService;
 import lombok.RequiredArgsConstructor;
@@ -12,7 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.LocalDateTime;
+
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -22,46 +24,83 @@ import java.util.concurrent.TimeUnit;
 @Transactional
 public class AuthServiceImpl implements AuthService {
 
-    private final UserRepository userRepository;
-    private final JwtService jwtService;
-    private final StringRedisTemplate redisTemplate;
+    private final UserRepository       userRepository;
+    private final RoleRepository       roleRepository;
+    private final JwtService           jwtService;
+    private final StringRedisTemplate  redisTemplate;
+    private final FirebaseTokenVerifier firebaseVerifier;
 
-    private static final String OTP_PREFIX = "otp:";
+    private static final String OTP_PREFIX      = "otp:";
     private static final String BLACKLIST_PREFIX = "blacklist:";
+
+    /* ── OTP (fallback dev flow) ── */
 
     @Override
     public void sendOtp(String phone, String purpose) {
-        // Generate 6-digit OTP (in prod: send via SMS)
         String otp = String.format("%06d", (int)(Math.random() * 900000) + 100000);
-        redisTemplate.opsForValue().set(OTP_PREFIX + phone, otp, 5, TimeUnit.MINUTES);
-        log.info("OTP for {} ({}): {}", phone, purpose, otp); // Dev only — remove in prod
+        redisTemplate.opsForValue().set(OTP_PREFIX + normalisePhone(phone), otp, 5, TimeUnit.MINUTES);
+        log.info("DEV OTP for {} ({}): {}", normalisePhone(phone), purpose, otp);
     }
 
     @Override
     public AuthResponse verifyOtp(String phone, String otp) {
-        String stored = redisTemplate.opsForValue().get(OTP_PREFIX + phone);
+        String normalised = normalisePhone(phone);
+        String stored = redisTemplate.opsForValue().get(OTP_PREFIX + normalised);
         if (stored == null || !stored.equals(otp)) {
             throw new BusinessException("Invalid or expired OTP");
         }
-        redisTemplate.delete(OTP_PREFIX + phone);
-
-        User user = userRepository.findByPhone(phone).orElseGet(() -> createUser(phone));
+        redisTemplate.delete(OTP_PREFIX + normalised);
+        User user = userRepository.findByPhone(normalised).orElseGet(() -> createUser(normalised, null, null));
         return buildAuthResponse(user);
     }
 
+    /* ── Firebase Google Sign-In ── */
+
     @Override
-    public AuthResponse googleLogin(String idToken) {
-        // In prod: verify with Firebase/Google; extract email+name
-        throw new BusinessException("Google login not configured in dev mode");
+    public AuthResponse googleLogin(String firebaseIdToken) {
+        FirebaseTokenVerifier.FirebaseUserInfo info = firebaseVerifier.verify(firebaseIdToken);
+        if (info.getEmail() == null || info.getEmail().isBlank()) {
+            throw new BusinessException("Google account has no email address");
+        }
+
+        User user = userRepository.findByEmail(info.getEmail()).orElseGet(() -> {
+            // Also check by googleId (uid)
+            return userRepository.findByGoogleId(info.getUid()).orElseGet(() ->
+                createUser(null, info.getEmail(), info.getUid())
+            );
+        });
+
+        // Update user info from Google
+        user.setGoogleId(info.getUid());
+        if (user.getName() == null || user.getName().isBlank()) user.setName(info.getDisplayName());
+        user.setVerified(info.isEmailVerified());
+        userRepository.save(user);
+
+        return buildAuthResponse(user);
     }
+
+    /* ── Firebase Phone Auth ── */
+
+    public AuthResponse verifyFirebasePhone(String firebaseIdToken) {
+        FirebaseTokenVerifier.FirebaseUserInfo info = firebaseVerifier.verify(firebaseIdToken);
+        if (info.getPhoneNumber() == null || info.getPhoneNumber().isBlank()) {
+            throw new BusinessException("Firebase token has no phone number");
+        }
+
+        User user = userRepository.findByPhone(info.getPhoneNumber())
+                .orElseGet(() -> createUser(info.getPhoneNumber(), null, null));
+        user.setVerified(true);
+        userRepository.save(user);
+
+        return buildAuthResponse(user);
+    }
+
+    /* ── Refresh & logout ── */
 
     @Override
     public AuthResponse refreshToken(String refreshToken) {
-        if (!jwtService.isTokenValid(refreshToken)) {
-            throw new BusinessException("Invalid refresh token");
-        }
-        UUID userId = jwtService.extractUserId(refreshToken);
-        User user = userRepository.findById(userId)
+        if (!jwtService.isTokenValid(refreshToken)) throw new BusinessException("Invalid refresh token");
+        User user = userRepository.findById(jwtService.extractUserId(refreshToken))
                 .orElseThrow(() -> new BusinessException("User not found"));
         return buildAuthResponse(user);
     }
@@ -69,33 +108,46 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public void logout(String accessToken) {
         long expiry = jwtService.getExpiry(accessToken);
-        if (expiry > 0) {
-            redisTemplate.opsForValue().set(BLACKLIST_PREFIX + accessToken, "1", expiry, TimeUnit.MILLISECONDS);
-        }
+        if (expiry > 0) redisTemplate.opsForValue().set(BLACKLIST_PREFIX + accessToken, "1", expiry, TimeUnit.MILLISECONDS);
     }
+
+    /* ── Guest ── */
 
     @Override
     public AuthResponse createGuestSession(String phone) {
+        Role customerRole = customerRole();
         User guest = User.builder()
-                .phone(phone != null ? phone : "GUEST-" + UUID.randomUUID().toString().substring(0, 8))
+                .phone("GUEST-" + UUID.randomUUID().toString().substring(0, 8))
                 .name("Guest")
+                .role(customerRole)
                 .verified(false)
+                .guest(true)
                 .build();
-        User saved = userRepository.save(guest);
-        return buildAuthResponse(saved);
+        return buildAuthResponse(userRepository.save(guest));
     }
 
-    private User createUser(String phone) {
+    /* ── Helpers ── */
+
+    private User createUser(String phone, String email, String googleId) {
+        Role role = customerRole();
         return userRepository.save(User.builder()
                 .phone(phone)
-                .verified(true)
+                .email(email)
+                .googleId(googleId)
+                .role(role)
+                .verified(phone != null)
                 .build());
     }
 
+    private Role customerRole() {
+        return roleRepository.findByName("CUSTOMER")
+                .orElseThrow(() -> new BusinessException("Role CUSTOMER not found — run DB migrations"));
+    }
+
     private AuthResponse buildAuthResponse(User user) {
-        String roleName = user.getRole() != null ? user.getRole().getName() : "CUSTOMER";
-        String accessToken = jwtService.generateAccessToken(user.getId(), roleName);
-        String refreshToken = jwtService.generateRefreshToken(user.getId());
+        String roleName      = user.getRole() != null ? user.getRole().getName() : "CUSTOMER";
+        String accessToken   = jwtService.generateAccessToken(user.getId(), roleName);
+        String refreshToken  = jwtService.generateRefreshToken(user.getId());
         return AuthResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
@@ -110,5 +162,13 @@ public class AuthServiceImpl implements AuthService {
                         .verified(user.isVerified())
                         .build())
                 .build();
+    }
+
+    private String normalisePhone(String phone) {
+        if (phone == null) return "";
+        String digits = phone.replaceAll("[^0-9]", "");
+        if (digits.length() == 12 && digits.startsWith("91")) return "+" + digits;
+        if (digits.length() == 10) return "+91" + digits;
+        return phone;
     }
 }

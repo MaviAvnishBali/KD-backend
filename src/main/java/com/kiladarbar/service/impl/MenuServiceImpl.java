@@ -45,6 +45,12 @@ public class MenuServiceImpl implements MenuService {
 
     @Override
     @Transactional(readOnly = true)
+    public Page<MenuItemResponse> getAllItems(FoodType foodType, UUID branchId, Pageable pageable) {
+        return menuItemRepository.findAllAvailable(foodType, branchId, pageable).map(this::toResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Page<MenuItemResponse> getItemsByCategory(Integer categoryId, FoodType foodType,
                                                       UUID branchId, Pageable pageable) {
         Page<MenuItem> items = foodType != null

@@ -13,6 +13,7 @@ import java.util.UUID;
 
 public interface MenuService {
     List<CategoryResponse> getCategories(UUID branchId);
+    Page<MenuItemResponse> getAllItems(FoodType foodType, UUID branchId, Pageable pageable);
     Page<MenuItemResponse> getItemsByCategory(Integer categoryId, FoodType foodType, UUID branchId, Pageable pageable);
     MenuItemResponse getItemById(UUID id);
     Page<MenuItemResponse> search(String query, FoodType foodType, UUID branchId, Pageable pageable);

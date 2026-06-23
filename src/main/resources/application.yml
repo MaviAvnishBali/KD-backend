@@ -130,6 +130,7 @@ app:
 
   firebase:
     credentials-path: ${FIREBASE_CREDENTIALS_PATH:classpath:firebase-service-account.json}
+    web-api-key: ${FIREBASE_WEB_API_KEY:AIzaSyBbvgTL06l4bUkeFDAuytJvoh4DP792wVw}
 
   sms:
     provider: ${SMS_PROVIDER:MSG91}
@@ -188,7 +189,12 @@ management:
         include: health,info,metrics,prometheus,flyway
   endpoint:
     health:
-      show-details: when-authorized
+      show-details: always
+  health:
+    mail:
+      enabled: false    # No mail server in dev
+    redis:
+      enabled: true
   metrics:
     export:
       prometheus:

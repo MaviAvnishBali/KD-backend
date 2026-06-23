@@ -18,22 +18,67 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/menu")
 @RequiredArgsConstructor
 @Tag(name = "Menu", description = "Browse categories and food items")
 public class MenuController {
 
     private final MenuService menuService;
 
-    @GetMapping("/categories")
+    /* ── Categories: GET /v1/categories ── */
+    @GetMapping({"/v1/categories", "/menu/categories"})
     @Operation(summary = "Get all active categories")
     public ResponseEntity<ApiResponse<List<CategoryResponse>>> getCategories(
             @RequestParam(required = false) UUID branchId) {
         return ResponseEntity.ok(ApiResponse.success(menuService.getCategories(branchId)));
     }
 
-    @GetMapping("/categories/{id}/items")
-    @Operation(summary = "Get items by category")
+    /* ── Products: GET /v1/products ── */
+    @GetMapping({"/v1/products", "/menu/items"})
+    @Operation(summary = "Get menu items with optional filtering")
+    public ResponseEntity<ApiResponse<Page<MenuItemResponse>>> getProducts(
+            @RequestParam(required = false) Integer categoryId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) FoodType foodType,
+            @RequestParam(required = false) UUID branchId,
+            @PageableDefault(size = 20) Pageable pageable) {
+        if (search != null && !search.isBlank()) {
+            return ResponseEntity.ok(ApiResponse.success(
+                    menuService.search(search, foodType, branchId, pageable)));
+        }
+        if (categoryId != null) {
+            return ResponseEntity.ok(ApiResponse.success(
+                    menuService.getItemsByCategory(categoryId, foodType, branchId, pageable)));
+        }
+        return ResponseEntity.ok(ApiResponse.success(
+                menuService.getAllItems(foodType, branchId, pageable)));
+    }
+
+    /* ── Best sellers: GET /v1/products/best-sellers ── */
+    @GetMapping({"/v1/products/best-sellers", "/menu/best-sellers"})
+    @Operation(summary = "Get best seller items")
+    public ResponseEntity<ApiResponse<List<MenuItemResponse>>> getBestSellers(
+            @RequestParam(required = false) UUID branchId) {
+        return ResponseEntity.ok(ApiResponse.success(menuService.getBestSellers(branchId)));
+    }
+
+    /* ── Recommended: GET /v1/products/recommended ── */
+    @GetMapping({"/v1/products/recommended", "/menu/recommended"})
+    @Operation(summary = "Get recommended items")
+    public ResponseEntity<ApiResponse<List<MenuItemResponse>>> getRecommended(
+            @RequestParam(required = false) UUID branchId) {
+        return ResponseEntity.ok(ApiResponse.success(menuService.getRecommended(branchId)));
+    }
+
+    /* ── Single product: GET /v1/products/{id} ── */
+    @GetMapping({"/v1/products/{id}", "/menu/items/{id}"})
+    @Operation(summary = "Get item detail by ID")
+    public ResponseEntity<ApiResponse<MenuItemResponse>> getItem(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(menuService.getItemById(id)));
+    }
+
+    /* ── Category items (legacy): GET /menu/categories/{id}/items ── */
+    @GetMapping("/menu/categories/{id}/items")
+    @Operation(summary = "Get items by category (legacy)")
     public ResponseEntity<ApiResponse<Page<MenuItemResponse>>> getItemsByCategory(
             @PathVariable Integer id,
             @RequestParam(required = false) FoodType foodType,
@@ -41,50 +86,5 @@ public class MenuController {
             @PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(ApiResponse.success(
                 menuService.getItemsByCategory(id, foodType, branchId, pageable)));
-    }
-
-    @GetMapping("/items/{id}")
-    @Operation(summary = "Get item detail")
-    public ResponseEntity<ApiResponse<MenuItemResponse>> getItem(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.success(menuService.getItemById(id)));
-    }
-
-    @GetMapping("/search")
-    @Operation(summary = "Search menu items")
-    public ResponseEntity<ApiResponse<Page<MenuItemResponse>>> search(
-            @RequestParam String q,
-            @RequestParam(required = false) FoodType foodType,
-            @RequestParam(required = false) UUID branchId,
-            @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(ApiResponse.success(
-                menuService.search(q, foodType, branchId, pageable)));
-    }
-
-    @GetMapping("/best-sellers")
-    @Operation(summary = "Get best seller items")
-    public ResponseEntity<ApiResponse<List<MenuItemResponse>>> getBestSellers(
-            @RequestParam(required = false) UUID branchId) {
-        return ResponseEntity.ok(ApiResponse.success(menuService.getBestSellers(branchId)));
-    }
-
-    @GetMapping("/recommended")
-    @Operation(summary = "Get recommended items")
-    public ResponseEntity<ApiResponse<List<MenuItemResponse>>> getRecommended(
-            @RequestParam(required = false) UUID branchId) {
-        return ResponseEntity.ok(ApiResponse.success(menuService.getRecommended(branchId)));
-    }
-
-    @GetMapping("/combos")
-    @Operation(summary = "Get combo meals")
-    public ResponseEntity<ApiResponse<List<MenuItemResponse>>> getCombos(
-            @RequestParam(required = false) UUID branchId) {
-        return ResponseEntity.ok(ApiResponse.success(menuService.getCombos(branchId)));
-    }
-
-    @GetMapping("/seasonal")
-    @Operation(summary = "Get seasonal specials")
-    public ResponseEntity<ApiResponse<List<MenuItemResponse>>> getSeasonalSpecials(
-            @RequestParam(required = false) UUID branchId) {
-        return ResponseEntity.ok(ApiResponse.success(menuService.getSeasonalSpecials(branchId)));
     }
 }

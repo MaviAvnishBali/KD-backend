@@ -35,37 +35,37 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
 
     private static final String[] PUBLIC_PATHS = {
-            "/auth/**",
-            "/menu/**",
-            "/categories/**",
-            "/branches/*/info",
-            "/search/**",
-            "/payments/webhook/**",
-            "/actuator/health",
+            "/v1/auth/**",
+            "/v1/products/**", "/v1/categories/**",
+            "/v1/banners/**", "/v1/offers/**",
+            "/v1/branches/*/info",
+            "/v1/reservations/availability",
+            "/v1/payments/webhook/**",
+            "/actuator/**",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html"
     };
 
     private static final String[] CUSTOMER_PATHS = {
-            "/orders/**",
-            "/cart/**",
-            "/users/me/**",
-            "/reservations/**",
-            "/reviews/**",
-            "/loyalty/**",
-            "/notifications/me/**",
-            "/addresses/**"
+            "/v1/orders/**",
+            "/v1/cart/**",
+            "/v1/users/me/**",
+            "/v1/reservations/**",
+            "/v1/reviews/**",
+            "/v1/loyalty/**",
+            "/v1/notifications/me/**",
+            "/v1/addresses/**"
     };
 
     private static final String[] ADMIN_PATHS = {
-            "/admin/**",
-            "/inventory/**",
-            "/employees/**",
-            "/marketing/**",
-            "/reports/**",
-            "/kds/**",
-            "/pos/**"
+            "/v1/admin/**",
+            "/v1/inventory/**",
+            "/v1/employees/**",
+            "/v1/marketing/**",
+            "/v1/reports/**",
+            "/v1/kds/**",
+            "/v1/pos/**"
     };
 
     @Bean
@@ -76,13 +76,13 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/menu/**", "/categories/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/v1/products/**", "/v1/categories/**").permitAll()
                         .requestMatchers(CUSTOMER_PATHS).hasAnyRole("CUSTOMER", "MANAGER", "OWNER", "SUPER_ADMIN")
                         .requestMatchers(ADMIN_PATHS).hasAnyRole("MANAGER", "OWNER", "SUPER_ADMIN")
-                        .requestMatchers("/super-admin/**").hasRole("SUPER_ADMIN")
-                        .requestMatchers("/kds/**").hasAnyRole("CHEF", "KITCHEN_STAFF", "MANAGER", "OWNER")
-                        .requestMatchers("/pos/**").hasAnyRole("CASHIER", "MANAGER", "OWNER")
-                        .requestMatchers("/delivery/**").hasAnyRole("DELIVERY_PARTNER", "MANAGER", "OWNER")
+                        .requestMatchers("/v1/super-admin/**").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/v1/kds/**").hasAnyRole("CHEF", "KITCHEN_STAFF", "MANAGER", "OWNER")
+                        .requestMatchers("/v1/pos/**").hasAnyRole("CASHIER", "MANAGER", "OWNER")
+                        .requestMatchers("/v1/delivery/**").hasAnyRole("DELIVERY_PARTNER", "MANAGER", "OWNER")
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
