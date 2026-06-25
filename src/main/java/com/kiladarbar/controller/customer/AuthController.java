@@ -56,6 +56,13 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("Logged out successfully"));
     }
 
+    @PostMapping("/admin/login")
+    @Operation(summary = "Admin login with email and password")
+    public ResponseEntity<ApiResponse<AuthResponse>> adminLogin(@Valid @RequestBody AdminLoginRequest request) {
+        AuthResponse response = authService.adminLogin(request.getEmail(), request.getPassword());
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
     @PostMapping("/guest")
     @Operation(summary = "Create guest session")
     public ResponseEntity<ApiResponse<AuthResponse>> guestLogin(@Valid @RequestBody GuestLoginRequest request) {

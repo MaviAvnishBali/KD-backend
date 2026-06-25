@@ -5,12 +5,15 @@ import com.kiladarbar.dto.request.UpdateMenuItemRequest;
 import com.kiladarbar.dto.response.CategoryResponse;
 import com.kiladarbar.dto.response.MenuItemResponse;
 import com.kiladarbar.exception.ResourceNotFoundException;
+import com.kiladarbar.model.entity.ItemImage;
 import com.kiladarbar.model.entity.MenuItem;
 import com.kiladarbar.model.enums.FoodType;
 import com.kiladarbar.repository.BranchRepository;
 import com.kiladarbar.repository.CategoryRepository;
+import com.kiladarbar.repository.ItemImageRepository;
 import com.kiladarbar.repository.MenuItemRepository;
 import com.kiladarbar.service.MenuService;
+import com.kiladarbar.service.S3Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,6 +32,8 @@ public class MenuServiceImpl implements MenuService {
     private final MenuItemRepository menuItemRepository;
     private final CategoryRepository categoryRepository;
     private final BranchRepository branchRepository;
+    private final ItemImageRepository itemImageRepository;
+    private final S3Service s3Service;
 
     @Override
     @Transactional(readOnly = true)
@@ -143,8 +148,21 @@ public class MenuServiceImpl implements MenuService {
 
     @Override
     public String uploadItemImage(UUID id, MultipartFile image) {
-        // In prod: upload to S3 and return URL
-        return "/images/placeholder.jpg";
+        MenuItem item = menuItemRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Menu item not found"));
+
+        String url = s3Service.upload("menu-items/" + id, image);
+
+        // Make the new image primary and demote any existing primary
+        itemImageRepository.clearPrimary(id);
+        itemImageRepository.save(ItemImage.builder()
+                .menuItem(item)
+                .url(url)
+                .primary(true)
+                .displayOrder((short) 0)
+                .build());
+
+        return url;
     }
 
     @Override
@@ -167,6 +185,12 @@ public class MenuServiceImpl implements MenuService {
     }
 
     private MenuItemResponse toResponse(MenuItem item) {
+        List<String> imageUrls = item.getImages() == null ? List.of()
+                : item.getImages().stream()
+                        .sorted((a, b) -> Boolean.compare(b.isPrimary(), a.isPrimary()))
+                        .map(ItemImage::getUrl)
+                        .collect(Collectors.toList());
+
         return MenuItemResponse.builder()
                 .id(item.getId()).name(item.getName()).slug(item.getSlug())
                 .description(item.getDescription()).price(item.getPrice())
@@ -175,6 +199,7 @@ public class MenuServiceImpl implements MenuService {
                 .isBestSeller(item.isBestSeller()).isRecommended(item.isRecommended())
                 .isSeasonal(item.isSeasonal()).preparationTime(item.getPreparationTime())
                 .calories(item.getCalories()).gstRate(item.getGstRate())
+                .imageUrls(imageUrls)
                 .categoryId(item.getCategory() != null ? item.getCategory().getId() : null)
                 .categoryName(item.getCategory() != null ? item.getCategory().getName() : null)
                 .build();

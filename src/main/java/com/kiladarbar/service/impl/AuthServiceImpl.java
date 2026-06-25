@@ -12,8 +12,11 @@ import com.kiladarbar.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Set;
 
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -24,11 +27,14 @@ import java.util.concurrent.TimeUnit;
 @Transactional
 public class AuthServiceImpl implements AuthService {
 
-    private final UserRepository       userRepository;
-    private final RoleRepository       roleRepository;
-    private final JwtService           jwtService;
-    private final StringRedisTemplate  redisTemplate;
+    private final UserRepository        userRepository;
+    private final RoleRepository        roleRepository;
+    private final JwtService            jwtService;
+    private final StringRedisTemplate   redisTemplate;
     private final FirebaseTokenVerifier firebaseVerifier;
+    private final PasswordEncoder       passwordEncoder;
+
+    private static final Set<String> ADMIN_ROLES = Set.of("MANAGER", "OWNER", "SUPER_ADMIN");
 
     private static final String OTP_PREFIX      = "otp:";
     private static final String BLACKLIST_PREFIX = "blacklist:";
@@ -51,6 +57,27 @@ public class AuthServiceImpl implements AuthService {
         }
         redisTemplate.delete(OTP_PREFIX + normalised);
         User user = userRepository.findByPhone(normalised).orElseGet(() -> createUser(normalised, null, null));
+        return buildAuthResponse(user);
+    }
+
+    /* ── Admin password login ── */
+
+    @Override
+    public AuthResponse adminLogin(String email, String password) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException("Invalid credentials"));
+
+        String role = user.getRole() != null ? user.getRole().getName() : "";
+        if (!ADMIN_ROLES.contains(role)) {
+            throw new BusinessException("Access denied — admin accounts only");
+        }
+        if (user.getPasswordHash() == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new BusinessException("Invalid credentials");
+        }
+
+        user.setLastLoginAt(java.time.LocalDateTime.now());
+        userRepository.save(user);
+
         return buildAuthResponse(user);
     }
 
