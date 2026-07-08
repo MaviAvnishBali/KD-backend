@@ -69,11 +69,14 @@ jobs:
             sudo sed -i "s|image: *[^ ]*kila-api[^ ]*|image: ${NEW_IMAGE}|" docker-compose.yml
             sudo docker compose up -d api
 
-            # 4. Health-gate — roll back on failure
-            echo "waiting for health..."
+            # 4. Health-gate — roll back on failure.
+            # This is a small free-tier VM: cold boot takes ~165s, so wait up to
+            # ~5 min. The image is JRE-alpine (no curl) — use wget, matching the
+            # compose healthcheck.
+            echo "waiting for health (up to 5 min; this VM boots slowly)..."
             ok=false
-            for i in $(seq 1 20); do
-              if sudo docker exec kila-api curl -fs http://localhost:8080/api/actuator/health >/dev/null 2>&1; then
+            for i in $(seq 1 60); do
+              if sudo docker exec kila-api wget -qO- http://localhost:8080/api/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
                 ok=true; break
               fi
               sleep 5
