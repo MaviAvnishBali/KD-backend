@@ -23,11 +23,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -45,10 +49,15 @@ public class OrderServiceImpl implements OrderService {
     private final InventoryService inventoryService;
     private final ApplicationEventPublisher eventPublisher;
 
-    private final AtomicLong orderCounter = new AtomicLong(0);
+    private static final Set<String> ALLOWED_PAYMENT_METHODS = Set.of("COD", "CASH_ON_DELIVERY");
+    private static final BigDecimal FREE_DELIVERY_THRESHOLD = BigDecimal.valueOf(500);
+    private static final BigDecimal DELIVERY_BASE = BigDecimal.valueOf(40);
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     @Override
     public OrderResponse placeOrder(CreateOrderRequest request, UUID userId) {
+        validatePaymentMethod(request.getPaymentMethod());
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -60,6 +69,8 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order order = buildOrder(request, user, branch);
+        buildOrderItems(order, request.getItems());
+        applyDeliveryAddress(order, request, user);
 
         // Apply coupon if provided
         if (request.getCouponCode() != null) {
@@ -74,6 +85,12 @@ public class OrderServiceImpl implements OrderService {
         // Calculate final totals
         calculateTotals(order);
 
+        attachCodPayment(order, user);
+
+        // COD orders need no payment gateway hand-off — confirm immediately
+        order.setStatus(OrderStatus.CONFIRMED);
+        order.setConfirmedAt(LocalDateTime.now());
+
         Order savedOrder = orderRepository.save(order);
 
         // Deduct inventory
@@ -85,10 +102,75 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // Publish event for notifications, KDS, etc.
-        eventPublisher.publishEvent(new OrderStatusChangedEvent(savedOrder, null, OrderStatus.PENDING));
+        eventPublisher.publishEvent(new OrderStatusChangedEvent(savedOrder, null, OrderStatus.CONFIRMED));
 
-        log.info("Order placed: {} for user {}", savedOrder.getOrderNumber(), userId);
+        log.info("Order placed (COD): {} for user {}", savedOrder.getOrderNumber(), userId);
         return mapToResponse(savedOrder);
+    }
+
+    private void validatePaymentMethod(String method) {
+        if (method != null && !ALLOWED_PAYMENT_METHODS.contains(method.toUpperCase())) {
+            throw new BusinessException("Only Cash on Delivery is available as a payment method");
+        }
+    }
+
+    private void buildOrderItems(Order order, List<CreateOrderRequest.OrderItemRequest> itemRequests) {
+        for (CreateOrderRequest.OrderItemRequest itemReq : itemRequests) {
+            MenuItem menuItem = menuItemRepository.findById(itemReq.getMenuItemId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Menu item not found: " + itemReq.getMenuItemId()));
+
+            if (!menuItem.isAvailable()) {
+                throw new BusinessException(menuItem.getName() + " is currently unavailable");
+            }
+            if (itemReq.getQuantity() == null || itemReq.getQuantity() < 1) {
+                throw new BusinessException("Invalid quantity for " + menuItem.getName());
+            }
+
+            BigDecimal unitPrice = menuItem.getDiscountPrice() != null
+                    ? menuItem.getDiscountPrice() : menuItem.getPrice();
+
+            OrderItem item = OrderItem.builder()
+                    .order(order)
+                    .menuItem(menuItem)
+                    .name(menuItem.getName())
+                    .quantity(itemReq.getQuantity().shortValue())
+                    .unitPrice(unitPrice)
+                    .gstRate(menuItem.getGstRate())
+                    .totalPrice(unitPrice.multiply(BigDecimal.valueOf(itemReq.getQuantity())))
+                    .specialInstruction(itemReq.getSpecialInstruction())
+                    .build();
+            order.getItems().add(item);
+        }
+    }
+
+    private void applyDeliveryAddress(Order order, CreateOrderRequest request, User user) {
+        if (order.getOrderType() != OrderType.DELIVERY) return;
+
+        if (request.getDeliveryAddressId() == null) {
+            throw new BusinessException("Delivery address is required for delivery orders");
+        }
+        UserAddress address = user.getAddresses().stream()
+                .filter(a -> a.getId().equals(request.getDeliveryAddressId()))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Delivery address not found"));
+
+        order.setDeliveryAddress(address);
+        order.setDeliveryLat(address.getLatitude());
+        order.setDeliveryLng(address.getLongitude());
+    }
+
+    private void attachCodPayment(Order order, User user) {
+        Payment payment = Payment.builder()
+                .order(order)
+                .user(user)
+                .amount(order.getTotalAmount())
+                .currency("INR")
+                .method("COD")
+                .gateway("INTERNAL")
+                .status("PENDING")   // becomes SUCCESS when driver collects cash
+                .build();
+        order.setPayment(payment);
     }
 
     @Override
@@ -225,6 +307,13 @@ public class OrderServiceImpl implements OrderService {
                 .orderType(request.getOrderType())
                 .status(OrderStatus.PENDING)
                 .deliveryInstructions(request.getDeliveryInstructions())
+                .subtotal(BigDecimal.ZERO)
+                .discountAmount(BigDecimal.ZERO)
+                .deliveryCharge(BigDecimal.ZERO)
+                .packagingCharge(BigDecimal.ZERO)
+                .cgstAmount(BigDecimal.ZERO)
+                .sgstAmount(BigDecimal.ZERO)
+                .totalAmount(BigDecimal.ZERO)
                 .tipAmount(request.getTipAmount() != null ? request.getTipAmount() : BigDecimal.ZERO)
                 .scheduled(request.isScheduled())
                 .scheduledAt(request.getScheduledAt())
@@ -233,8 +322,14 @@ public class OrderServiceImpl implements OrderService {
 
     private String generateOrderNumber() {
         String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        long seq = orderCounter.incrementAndGet();
-        return String.format("KD-%s-%05d", date, seq);
+        // Random suffix survives restarts; the unique index on order_number guards collisions
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String candidate = String.format("KD-%s-%05d", date, RANDOM.nextInt(100_000));
+            if (!orderRepository.existsByOrderNumber(candidate)) {
+                return candidate;
+            }
+        }
+        throw new BusinessException("Could not generate order number, please retry");
     }
 
     private void applyCoupon(Order order, String couponCode, User user) {
@@ -270,9 +365,15 @@ public class OrderServiceImpl implements OrderService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         order.setSubtotal(subtotal);
 
+        if (order.getOrderType() == OrderType.DELIVERY) {
+            order.setDeliveryCharge(subtotal.compareTo(FREE_DELIVERY_THRESHOLD) >= 0
+                    ? BigDecimal.ZERO : DELIVERY_BASE);
+        }
+
         BigDecimal taxable = subtotal.subtract(order.getDiscountAmount());
         BigDecimal gstRate = new BigDecimal("0.05");
-        BigDecimal halfGst = taxable.multiply(gstRate).divide(BigDecimal.valueOf(2));
+        BigDecimal halfGst = taxable.multiply(gstRate)
+                .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
         order.setCgstAmount(halfGst);
         order.setSgstAmount(halfGst);
 
@@ -282,7 +383,7 @@ public class OrderServiceImpl implements OrderService {
                 .add(order.getDeliveryCharge())
                 .add(order.getPackagingCharge())
                 .add(order.getTipAmount());
-        order.setTotalAmount(total);
+        order.setTotalAmount(total.setScale(2, RoundingMode.HALF_UP));
     }
 
     private void earnLoyaltyPoints(Order order) {
@@ -304,9 +405,22 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private CreateOrderRequest buildReorderRequest(Order originalOrder) {
+        List<CreateOrderRequest.OrderItemRequest> items = originalOrder.getItems().stream()
+                .map(item -> {
+                    CreateOrderRequest.OrderItemRequest req = new CreateOrderRequest.OrderItemRequest();
+                    req.setMenuItemId(item.getMenuItem().getId());
+                    req.setQuantity((int) item.getQuantity());
+                    req.setSpecialInstruction(item.getSpecialInstruction());
+                    return req;
+                })
+                .collect(Collectors.toList());
+
         return CreateOrderRequest.builder()
                 .branchId(originalOrder.getBranch().getId())
                 .orderType(originalOrder.getOrderType())
+                .items(items)
+                .deliveryAddressId(originalOrder.getDeliveryAddress() != null
+                        ? originalOrder.getDeliveryAddress().getId() : null)
                 .build();
     }
 
@@ -316,12 +430,31 @@ public class OrderServiceImpl implements OrderService {
                 .orderNumber(order.getOrderNumber())
                 .status(order.getStatus())
                 .orderType(order.getOrderType())
+                .branchName(order.getBranch() != null ? order.getBranch().getName() : null)
                 .subtotal(order.getSubtotal())
                 .discountAmount(order.getDiscountAmount())
                 .deliveryCharge(order.getDeliveryCharge())
+                .packagingCharge(order.getPackagingCharge())
+                .tipAmount(order.getTipAmount())
                 .cgstAmount(order.getCgstAmount())
                 .sgstAmount(order.getSgstAmount())
                 .totalAmount(order.getTotalAmount())
+                .items(order.getItems().stream()
+                        .map(item -> OrderResponse.OrderItemResponse.builder()
+                                .id(item.getId())
+                                .name(item.getName())
+                                .quantity(item.getQuantity())
+                                .unitPrice(item.getUnitPrice())
+                                .totalPrice(item.getTotalPrice())
+                                .kdsStatus(item.getKdsStatus())
+                                .build())
+                        .collect(Collectors.toList()))
+                .paymentMethod(order.getPayment() != null ? order.getPayment().getMethod() : null)
+                .paymentStatus(order.getPayment() != null ? order.getPayment().getStatus() : null)
+                .couponCode(order.getCouponCode())
+                .deliveryInfo(buildDeliveryInfo(order))
+                .deliveryAddress(formatAddress(order.getDeliveryAddress()))
+                .estimatedMinutes(estimateMinutes(order))
                 .pointsEarned(order.getPointsEarned())
                 .pointsRedeemed(order.getPointsRedeemed())
                 .createdAt(order.getCreatedAt())
@@ -329,6 +462,46 @@ public class OrderServiceImpl implements OrderService {
                 .preparingAt(order.getPreparingAt())
                 .readyAt(order.getReadyAt())
                 .deliveredAt(order.getDeliveredAt())
+                .cancelledAt(order.getCancelledAt())
+                .cancellationReason(order.getCancellationReason())
                 .build();
+    }
+
+    private OrderResponse.DeliveryInfo buildDeliveryInfo(Order order) {
+        DeliveryAssignment assignment = order.getDeliveryAssignment();
+        if (assignment == null || assignment.getPartner() == null) return null;
+        DeliveryPartner partner = assignment.getPartner();
+        User driverUser = partner.getUser();
+        return OrderResponse.DeliveryInfo.builder()
+                .driverName(driverUser != null ? driverUser.getName() : null)
+                .driverPhone(driverUser != null ? driverUser.getPhone() : null)
+                .driverLat(partner.getCurrentLat())
+                .driverLng(partner.getCurrentLng())
+                .estimatedMinutes(estimateMinutes(order))
+                .deliveryOtp(assignment.getDeliveryOtp())
+                .build();
+    }
+
+    private String formatAddress(UserAddress address) {
+        if (address == null) return null;
+        StringBuilder sb = new StringBuilder(address.getAddressLine1());
+        if (address.getAddressLine2() != null && !address.getAddressLine2().isBlank()) {
+            sb.append(", ").append(address.getAddressLine2());
+        }
+        if (address.getLandmark() != null && !address.getLandmark().isBlank()) {
+            sb.append(", near ").append(address.getLandmark());
+        }
+        sb.append(", ").append(address.getCity()).append(" - ").append(address.getPincode());
+        return sb.toString();
+    }
+
+    private Integer estimateMinutes(Order order) {
+        return switch (order.getStatus()) {
+            case CONFIRMED, PENDING -> 40;
+            case PREPARING -> 30;
+            case READY -> 20;
+            case OUT_FOR_DELIVERY -> 15;
+            default -> null;
+        };
     }
 }

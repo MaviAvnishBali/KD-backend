@@ -9,4 +9,5 @@ import java.util.UUID;
 @Repository
 public interface DeliveryPartnerRepository extends JpaRepository<DeliveryPartner, UUID> {
     List<DeliveryPartner> findByBranchIdAndAvailableTrue(UUID branchId);
+    List<DeliveryPartner> findByAvailableTrue();
 }

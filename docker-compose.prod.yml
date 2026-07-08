@@ -1,0 +1,79 @@
+# ══════════════════════════════════════════════════════════════
+#  Kila Darbar API — Production stack (API + Postgres + Redis)
+#  Usage on the server:
+#    docker compose -f docker-compose.prod.yml up -d --build
+# ══════════════════════════════════════════════════════════════
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: kila-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kiladarbar
+      POSTGRES_USER: kiladarbar
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kiladarbar -d kiladarbar"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks: [kila-net]
+
+  redis:
+    image: redis:7-alpine
+    container_name: kila-redis
+    restart: unless-stopped
+    command: redis-server --save 20 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks: [kila-net]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kila-api
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres:5432/kiladarbar
+      DB_USERNAME: kiladarbar
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      SERVER_PORT: 8080
+      APP_BASE_URL: ${APP_BASE_URL}
+      FRONTEND_URL: ${FRONTEND_URL}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/actuator/health | grep -q UP"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks: [kila-net]
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  kila-net:
+    driver: bridge

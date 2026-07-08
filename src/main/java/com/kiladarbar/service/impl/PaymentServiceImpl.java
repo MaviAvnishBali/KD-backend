@@ -22,23 +22,13 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentInitResponse initiatePayment(InitiatePaymentRequest request, UUID userId) {
-        Order order = orderRepository.findById(request.getOrderId())
-                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-        // In prod: create Razorpay order via Razorpay SDK
-        return PaymentInitResponse.builder()
-                .razorpayOrderId("order_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16))
-                .razorpayKeyId("rzp_test_placeholder")
-                .amount(order.getTotalAmount())
-                .currency("INR")
-                .name("Kila Darbar")
-                .description("Order " + order.getOrderNumber())
-                .build();
+        // Online payments are disabled — orders are Cash on Delivery only
+        throw new BusinessException("Online payment is not available. Orders are Cash on Delivery only.");
     }
 
     @Override
     public void verifyAndConfirmPayment(VerifyPaymentRequest request) {
-        // In prod: verify Razorpay HMAC signature
-        log.info("Payment verified: {}", request.getRazorpayPaymentId());
+        throw new BusinessException("Online payment is not available. Orders are Cash on Delivery only.");
     }
 
     @Override

@@ -1,24 +1,26 @@
 # ── Stage 1: Build ──────────────────────────────────────────────────
-FROM eclipse-temurin:21-jdk-alpine AS build
+FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
 
 # Cache dependencies
 COPY pom.xml .
-COPY .mvn/ .mvn/
-COPY mvnw .
-RUN chmod +x mvnw && ./mvnw dependency:go-offline -q
+RUN mvn dependency:go-offline -q
 
 # Build
 COPY src/ src/
-RUN ./mvnw package -DskipTests -q
+RUN mvn package -DskipTests -q
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────
 FROM eclipse-temurin:21-jre-alpine AS runtime
 WORKDIR /app
 
 # Security: non-root user
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN addgroup -S spring && adduser -S spring -G spring \
+    && mkdir -p /app/uploads && chown -R spring:spring /app/uploads
 USER spring:spring
+
+# Persisted media lives here (mount a volume at this path — see docker-compose)
+VOLUME ["/app/uploads"]
 
 # Copy jar
 COPY --from=build /app/target/kila-darbar-api-*.jar app.jar

@@ -36,6 +36,10 @@ public interface MenuItemRepository extends JpaRepository<MenuItem, UUID> {
     @Query("SELECT m FROM MenuItem m WHERE m.available = true AND (:branchId IS NULL OR m.branch.id = :branchId) AND (:foodType IS NULL OR m.foodType = :foodType) ORDER BY m.displayOrder ASC")
     Page<MenuItem> findAllAvailable(@Param("foodType") FoodType foodType, @Param("branchId") UUID branchId, Pageable pageable);
 
+    /** Admin listing — includes hidden (unavailable) items so they can be managed / re-enabled. */
+    @Query("SELECT m FROM MenuItem m WHERE (:branchId IS NULL OR m.branch.id = :branchId) AND (:foodType IS NULL OR m.foodType = :foodType) ORDER BY m.displayOrder ASC")
+    Page<MenuItem> findAllForAdmin(@Param("foodType") FoodType foodType, @Param("branchId") UUID branchId, Pageable pageable);
+
     List<MenuItem> findByBestSellerTrueAndAvailableTrueAndBranchId(UUID branchId);
     List<MenuItem> findByRecommendedTrueAndAvailableTrueAndBranchId(UUID branchId);
     List<MenuItem> findBySeasonalTrueAndAvailableTrueAndBranchId(UUID branchId);

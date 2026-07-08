@@ -34,8 +34,15 @@ public class OrderResponse {
     // Items
     private List<OrderItemResponse> items;
 
+    // Payment
+    private String paymentMethod;
+    private String paymentStatus;
+    private String couponCode;
+
     // Delivery
     private DeliveryInfo deliveryInfo;
+    private String deliveryAddress;
+    private Integer estimatedMinutes;
 
     // Loyalty
     private int pointsEarned;
@@ -74,5 +81,7 @@ public class OrderResponse {
         private BigDecimal driverLng;
         private Integer estimatedMinutes;
         private String trackingUrl;
+        /** Share with the driver to confirm hand-over */
+        private String deliveryOtp;
     }
 }

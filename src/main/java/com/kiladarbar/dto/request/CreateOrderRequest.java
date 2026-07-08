@@ -1,5 +1,6 @@
 package com.kiladarbar.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.kiladarbar.model.enums.OrderType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -26,14 +27,20 @@ public class CreateOrderRequest {
     @Valid
     private List<OrderItemRequest> items;
 
+    @JsonAlias("addressId")
     private UUID deliveryAddressId;
+
+    @JsonAlias("instructions")
     private String deliveryInstructions;
+
     private UUID tableId;
     private String couponCode;
     private Integer redeemPoints;
     private BigDecimal tipAmount;
     private boolean scheduled;
     private LocalDateTime scheduledAt;
+
+    /** Only CASH_ON_DELIVERY (alias COD) is accepted — online payments are disabled. */
     private String paymentMethod;
 
     @Data

@@ -29,6 +29,7 @@ public class DeliveryPartner {
     private String vehicleNumber;
 
     @Column(name = "is_available", nullable = false)
+    @Builder.Default
     private boolean available = true;
 
     @Column(name = "current_lat", precision = 10, scale = 8)
@@ -37,10 +38,18 @@ public class DeliveryPartner {
     @Column(name = "current_lng", precision = 11, scale = 8)
     private BigDecimal currentLng;
 
+    @Column(name = "last_location_at")
+    private LocalDateTime lastLocationAt;
+
+    @Column(name = "license_number", length = 20)
+    private String licenseNumber;
+
     @Column(name = "rating", precision = 3, scale = 2)
+    @Builder.Default
     private BigDecimal rating = new BigDecimal("5.00");
 
     @Column(name = "total_deliveries", nullable = false)
+    @Builder.Default
     private int totalDeliveries = 0;
 
     @Column(name = "created_at", nullable = false, updatable = false)

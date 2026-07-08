@@ -18,6 +18,7 @@ import java.util.UUID;
 public interface OrderRepository extends JpaRepository<Order, UUID> {
     Optional<Order> findByIdAndUserId(UUID id, UUID userId);
     Page<Order> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
+    boolean existsByOrderNumber(String orderNumber);
 
     @Query("SELECT o FROM Order o WHERE " +
            "(:branchId IS NULL OR o.branch.id = :branchId) AND " +

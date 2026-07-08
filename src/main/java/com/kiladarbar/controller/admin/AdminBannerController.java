@@ -29,8 +29,10 @@ public class AdminBannerController {
     @Operation(summary = "List all banners")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listBanners() {
         var rows = jdbc.queryForList(
-            "SELECT id, title, subtitle, tag, emoji, bg_color_start, bg_color_end, " +
-            "       cta_text, cta_link, display_order, is_active FROM banners ORDER BY display_order");
+            "SELECT id, title, subtitle, tag, emoji, " +
+            "       bg_color_start AS \"bgColorStart\", bg_color_end AS \"bgColorEnd\", " +
+            "       cta_text AS \"ctaText\", cta_link AS \"ctaLink\", " +
+            "       display_order AS \"displayOrder\", is_active FROM banners ORDER BY display_order");
         return ResponseEntity.ok(ApiResponse.success(rows));
     }
 
@@ -86,9 +88,12 @@ public class AdminBannerController {
     @Operation(summary = "List all offers")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> listOffers() {
         var rows = jdbc.queryForList(
-            "SELECT id, emoji, title, description, promo_code, saving_text, badge_text, " +
-            "  bg_color_start, bg_color_end, discount_type, discount_value, " +
-            "  min_order_amount, max_discount, valid_until, display_order, is_active " +
+            "SELECT id, emoji, title, description, " +
+            "  promo_code AS \"promoCode\", saving_text AS \"savingText\", badge_text AS \"badgeText\", " +
+            "  bg_color_start AS \"bgColorStart\", bg_color_end AS \"bgColorEnd\", " +
+            "  discount_type AS \"discountType\", discount_value AS \"discountValue\", " +
+            "  min_order_amount AS \"minOrderAmount\", max_discount AS \"maxDiscount\", " +
+            "  valid_until AS \"validUntil\", display_order AS \"displayOrder\", is_active " +
             "FROM offer_banners ORDER BY display_order");
         return ResponseEntity.ok(ApiResponse.success(rows));
     }

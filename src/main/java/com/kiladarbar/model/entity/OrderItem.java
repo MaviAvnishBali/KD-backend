@@ -24,12 +24,14 @@ public class OrderItem {
     @Column(nullable = false, length = 150)
     private String name;
 
+    @Builder.Default
     @Column(nullable = false)
     private short quantity = 1;
 
     @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal unitPrice;
 
+    @Builder.Default
     @Column(name = "discount_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal discountAmount = BigDecimal.ZERO;
 
@@ -42,6 +44,7 @@ public class OrderItem {
     @Column(name = "special_instruction")
     private String specialInstruction;
 
+    @Builder.Default
     @Column(name = "kds_status", nullable = false, length = 20)
     private String kdsStatus = "PENDING";
 

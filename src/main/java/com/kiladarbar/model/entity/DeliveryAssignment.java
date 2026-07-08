@@ -25,6 +25,29 @@ public class DeliveryAssignment {
     @Column(name = "assigned_at", nullable = false)
     private LocalDateTime assignedAt;
 
+    @Column(name = "accepted_at")
+    private LocalDateTime acceptedAt;
+
+    @Column(name = "picked_up_at")
+    private LocalDateTime pickedUpAt;
+
+    @Column(name = "delivered_at")
+    private LocalDateTime deliveredAt;
+
+    @Column(name = "delivery_distance_km", precision = 6, scale = 2)
+    private BigDecimal deliveryDistanceKm;
+
+    @Column(name = "delivery_duration_min")
+    private Short deliveryDurationMin;
+
+    @Column(name = "earnings", precision = 10, scale = 2)
+    private BigDecimal earnings;
+
+    @Column(name = "delivery_otp", length = 6)
+    private String deliveryOtp;
+
+    /** ASSIGNED → ACCEPTED → PICKED_UP → DELIVERED (or REJECTED) */
     @Column(name = "status", nullable = false, length = 20)
+    @Builder.Default
     private String status = "ASSIGNED";
 }

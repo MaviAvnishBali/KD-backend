@@ -81,6 +81,27 @@ public class AuthServiceImpl implements AuthService {
         return buildAuthResponse(user);
     }
 
+    /* ── Delivery partner password login ── */
+
+    @Override
+    public AuthResponse deliveryLogin(String email, String password) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException("Invalid credentials"));
+
+        String role = user.getRole() != null ? user.getRole().getName() : "";
+        if (!"DELIVERY_PARTNER".equals(role)) {
+            throw new BusinessException("Access denied — delivery partner accounts only");
+        }
+        if (user.getPasswordHash() == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new BusinessException("Invalid credentials");
+        }
+
+        user.setLastLoginAt(java.time.LocalDateTime.now());
+        userRepository.save(user);
+
+        return buildAuthResponse(user);
+    }
+
     /* ── Firebase Google Sign-In ── */
 
     @Override

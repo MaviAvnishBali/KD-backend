@@ -4,11 +4,15 @@ import com.kiladarbar.dto.request.CreateMenuItemRequest;
 import com.kiladarbar.dto.request.UpdateMenuItemRequest;
 import com.kiladarbar.dto.response.ApiResponse;
 import com.kiladarbar.dto.response.MenuItemResponse;
+import com.kiladarbar.model.enums.FoodType;
 import com.kiladarbar.service.MenuService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +30,16 @@ import java.util.UUID;
 public class AdminMenuController {
 
     private final MenuService menuService;
+
+    @GetMapping("/items")
+    @Operation(summary = "List all menu items (includes hidden/unavailable) for management")
+    public ResponseEntity<ApiResponse<Page<MenuItemResponse>>> listItems(
+            @RequestParam(required = false) FoodType foodType,
+            @RequestParam(required = false) UUID branchId,
+            @PageableDefault(size = 100) Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.success(
+                menuService.getAllItemsForAdmin(foodType, branchId, pageable)));
+    }
 
     @PostMapping("/items")
     @Operation(summary = "Create a new menu item")

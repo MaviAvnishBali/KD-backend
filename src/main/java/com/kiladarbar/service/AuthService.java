@@ -7,6 +7,7 @@ public interface AuthService {
     AuthResponse verifyOtp(String phone, String otp);
     AuthResponse googleLogin(String idToken);
     AuthResponse adminLogin(String email, String password);
+    AuthResponse deliveryLogin(String email, String password);
     AuthResponse refreshToken(String refreshToken);
     void logout(String accessToken);
     AuthResponse createGuestSession(String phone);

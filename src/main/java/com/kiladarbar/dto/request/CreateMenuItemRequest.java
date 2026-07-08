@@ -8,7 +8,7 @@ import java.util.UUID;
 
 @Data
 public class CreateMenuItemRequest {
-    @NotNull private UUID branchId;
+    private UUID branchId;   // optional — defaults to the item having no branch (single-branch setup)
     @NotNull private Integer categoryId;
     @NotBlank @Size(max = 150) private String name;
     private String description;

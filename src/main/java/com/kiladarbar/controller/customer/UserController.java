@@ -5,6 +5,7 @@ import com.kiladarbar.dto.request.UpdateProfileRequest;
 import com.kiladarbar.dto.response.AddressResponse;
 import com.kiladarbar.dto.response.ApiResponse;
 import com.kiladarbar.dto.response.UserProfileResponse;
+import com.kiladarbar.service.DeviceTokenService;
 import com.kiladarbar.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -26,6 +27,7 @@ import java.util.UUID;
 public class UserController {
 
     private final UserService userService;
+    private final DeviceTokenService deviceTokenService;
 
     /* ── Profile ── */
 
@@ -96,13 +98,22 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success("Default address updated"));
     }
 
+    /* ── Push notifications ── */
+
     @PutMapping("/me/fcm-token")
-    @Operation(summary = "Update FCM push token")
+    @Operation(summary = "Register this device's FCM token for push notifications")
     public ResponseEntity<ApiResponse<Void>> updateFcmToken(
             Authentication auth,
             @RequestParam String token) {
-        userService.updateFcmToken(uid(auth), token);
-        return ResponseEntity.ok(ApiResponse.success("FCM token updated"));
+        deviceTokenService.register(uid(auth), token, "ANDROID");
+        return ResponseEntity.ok(ApiResponse.success("Device registered for notifications"));
+    }
+
+    @DeleteMapping("/me/fcm-token")
+    @Operation(summary = "Unregister this device (e.g. on logout)")
+    public ResponseEntity<ApiResponse<Void>> removeFcmToken(@RequestParam String token) {
+        deviceTokenService.remove(token);
+        return ResponseEntity.ok(ApiResponse.success("Device unregistered"));
     }
 
     /* ── Helper ── */

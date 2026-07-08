@@ -63,6 +63,13 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
+    @PostMapping("/delivery/login")
+    @Operation(summary = "Delivery partner login with email and password")
+    public ResponseEntity<ApiResponse<AuthResponse>> deliveryLogin(@Valid @RequestBody AdminLoginRequest request) {
+        AuthResponse response = authService.deliveryLogin(request.getEmail(), request.getPassword());
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
     @PostMapping("/guest")
     @Operation(summary = "Create guest session")
     public ResponseEntity<ApiResponse<AuthResponse>> guestLogin(@Valid @RequestBody GuestLoginRequest request) {
