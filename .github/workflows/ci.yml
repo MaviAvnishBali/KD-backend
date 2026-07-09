@@ -1,0 +1,37 @@
+name: CI
+
+# PR gate: every PR into main must compile, package, and pass any tests before
+# it can be merged. This is what makes `main` always-deployable — the deploy
+# workflow (deploy.yml) only runs AFTER a green merge to main.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Cancel superseded runs on the same PR to save minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK 21 mirrors the prod image build (maven:3.9-eclipse-temurin-21).
+      # The pom targets release 17, which JDK 21 compiles correctly.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      # `verify` = compile + package + run any tests (unit + integration).
+      # There are no tests yet; this still gates on a clean compile/package and
+      # will automatically run tests as soon as they are added under src/test.
+      # -B batch mode, -ntp no transfer progress (clean logs), -e for stack traces.
+      - name: Build & test (mvn verify)
+        run: mvn -B -ntp -e verify
