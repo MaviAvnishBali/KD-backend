@@ -1,13 +1,16 @@
 package com.kiladarbar.controller.admin;
 
 import com.kiladarbar.dto.response.ApiResponse;
+import com.kiladarbar.service.S3Service;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -22,6 +25,7 @@ import java.util.UUID;
 public class AdminBannerController {
 
     private final JdbcTemplate jdbc;
+    private final S3Service s3Service;
 
     // ── Banners ───────────────────────────────────────────────────────────────
 
@@ -93,7 +97,8 @@ public class AdminBannerController {
             "  bg_color_start AS \"bgColorStart\", bg_color_end AS \"bgColorEnd\", " +
             "  discount_type AS \"discountType\", discount_value AS \"discountValue\", " +
             "  min_order_amount AS \"minOrderAmount\", max_discount AS \"maxDiscount\", " +
-            "  valid_until AS \"validUntil\", display_order AS \"displayOrder\", is_active " +
+            "  valid_until AS \"validUntil\", display_order AS \"displayOrder\", is_active, " +
+            "  image_url AS \"imageUrl\" " +
             "FROM offer_banners ORDER BY display_order");
         return ResponseEntity.ok(ApiResponse.success(rows));
     }
@@ -166,5 +171,15 @@ public class AdminBannerController {
     public ResponseEntity<ApiResponse<Void>> deleteOffer(@PathVariable UUID id) {
         jdbc.update("DELETE FROM offer_banners WHERE id = ?", id);
         return ResponseEntity.ok(ApiResponse.success("Offer deleted"));
+    }
+
+    @PostMapping(value = "/offers/{id}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Upload an offer's image")
+    public ResponseEntity<ApiResponse<String>> uploadOfferImage(
+            @PathVariable UUID id,
+            @RequestPart("image") MultipartFile image) {
+        String url = s3Service.upload("offers/" + id, image);
+        jdbc.update("UPDATE offer_banners SET image_url = ? WHERE id = ?", url, id);
+        return ResponseEntity.ok(ApiResponse.success(url, "Image uploaded"));
     }
 }
