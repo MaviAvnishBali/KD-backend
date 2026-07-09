@@ -95,6 +95,17 @@ public class PartyHallBookingServiceImpl implements PartyHallBookingService {
         return mapToResponse(booking);
     }
 
+    @Override
+    public PartyHallBookingResponse adminUpdatePackage(UUID bookingId, String packageType, java.math.BigDecimal totalAmount) {
+        PartyHallBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
+        if (packageType != null && !packageType.isBlank()) booking.setPackageType(packageType);
+        booking.setTotalAmount(totalAmount);
+        booking = bookingRepository.save(booking);
+        log.info("Party hall booking {} package set to {} (₹{}) by admin", bookingId, booking.getPackageType(), totalAmount);
+        return mapToResponse(booking);
+    }
+
     private PartyHallBookingResponse mapToResponse(PartyHallBooking b) {
         return PartyHallBookingResponse.builder()
                 .id(b.getId())

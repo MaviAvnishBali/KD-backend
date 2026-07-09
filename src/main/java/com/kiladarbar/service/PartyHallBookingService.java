@@ -14,4 +14,5 @@ public interface PartyHallBookingService {
     // ── Admin ──
     List<PartyHallBookingResponse> adminList(String status);
     PartyHallBookingResponse adminUpdateStatus(UUID bookingId, String status);
+    PartyHallBookingResponse adminUpdatePackage(UUID bookingId, String packageType, java.math.BigDecimal totalAmount);
 }
