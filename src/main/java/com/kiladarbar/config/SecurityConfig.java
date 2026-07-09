@@ -79,7 +79,7 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/v1/products/**", "/v1/categories/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/v1/products/**", "/v1/categories/**", "/v1/party-hall/packages").permitAll()
                         .requestMatchers(CUSTOMER_PATHS).hasAnyRole("CUSTOMER", "MANAGER", "OWNER", "SUPER_ADMIN")
                         .requestMatchers(ADMIN_PATHS).hasAnyRole("MANAGER", "OWNER", "SUPER_ADMIN")
                         .requestMatchers("/v1/super-admin/**").hasRole("SUPER_ADMIN")
