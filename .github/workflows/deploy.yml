@@ -1,0 +1,90 @@
+name: Build & Deploy Backend
+
+# Push to main → build image → push to GHCR → deploy to the Oracle VM.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}   # allow manual runs from the Actions tab
+
+env:
+  IMAGE: ghcr.io/maviavnishbali/kila-api
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write        # push to GHCR with the built-in GITHUB_TOKEN
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push image (tagged with commit SHA + latest)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          SHA: ${{ github.sha }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: SHA
+          command_timeout: 10m
+          script: |
+            set -e
+            cd /opt/apps/kila-darbar
+            NEW_IMAGE="ghcr.io/maviavnishbali/kila-api:${SHA}"
+
+            # 1. Back up the prod DB before touching anything (keep last 10)
+            mkdir -p ~/backups
+            sudo docker exec kila-postgres pg_dump -U kiladarbar kiladarbar \
+              | gzip > ~/backups/kiladarbar-$(date +%F-%H%M%S).sql.gz
+            ls -1t ~/backups/*.sql.gz | tail -n +11 | xargs -r rm -f
+
+            # 2. Remember the currently-running image for rollback
+            PREV_IMAGE=$(grep -oE 'image: *[^ ]*kila-api[^ ]*' docker-compose.yml | awk '{print $2}')
+            echo "current: ${PREV_IMAGE}  ->  new: ${NEW_IMAGE}"
+
+            # 3. Pull the new image and point compose at it
+            sudo docker pull "${NEW_IMAGE}"
+            sudo sed -i "s|image: *[^ ]*kila-api[^ ]*|image: ${NEW_IMAGE}|" docker-compose.yml
+            sudo docker compose up -d api
+
+            # 4. Health-gate — roll back on failure.
+            # This is a small free-tier VM: cold boot takes ~165s, so wait up to
+            # ~5 min. The image is JRE-alpine (no curl) — use wget, matching the
+            # compose healthcheck.
+            echo "waiting for health (up to 5 min; this VM boots slowly)..."
+            ok=false
+            for i in $(seq 1 60); do
+              if sudo docker exec kila-api wget -qO- http://localhost:8080/api/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
+                ok=true; break
+              fi
+              sleep 5
+            done
+            if [ "$ok" != true ]; then
+              echo "!! health check FAILED — rolling back to ${PREV_IMAGE}"
+              sudo sed -i "s|image: *[^ ]*kila-api[^ ]*|image: ${PREV_IMAGE}|" docker-compose.yml
+              sudo docker compose up -d api
+              exit 1
+            fi
+            echo "✅ deployed ${NEW_IMAGE} and healthy"
