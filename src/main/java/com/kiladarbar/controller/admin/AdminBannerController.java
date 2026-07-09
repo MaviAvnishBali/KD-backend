@@ -43,7 +43,7 @@ public class AdminBannerController {
         jdbc.update(
             "INSERT INTO banners (id, title, subtitle, tag, emoji, bg_color_start, bg_color_end, " +
             "  cta_text, cta_link, display_order, is_active) VALUES (?,?,?,?,?,?,?,?,?,?,true)",
-            id.toString(),
+            id,
             body.get("title"), body.get("subtitle"), body.get("tag"), body.get("emoji"),
             body.getOrDefault("bgColorStart", "#6B0F1A"),
             body.getOrDefault("bgColorEnd",   "#111111"),
@@ -64,7 +64,7 @@ public class AdminBannerController {
             body.get("title"), body.get("subtitle"), body.get("tag"), body.get("emoji"),
             body.get("bgColorStart"), body.get("bgColorEnd"),
             body.get("ctaText"), body.get("ctaLink"), body.get("displayOrder"),
-            id.toString()
+            id
         );
         return ResponseEntity.ok(ApiResponse.success("Banner updated"));
     }
@@ -72,13 +72,13 @@ public class AdminBannerController {
     @PatchMapping("/{id}/toggle")
     @Operation(summary = "Toggle banner active state")
     public ResponseEntity<ApiResponse<Void>> toggleBanner(@PathVariable UUID id) {
-        jdbc.update("UPDATE banners SET is_active = NOT is_active WHERE id = ?", id.toString());
+        jdbc.update("UPDATE banners SET is_active = NOT is_active WHERE id = ?", id);
         return ResponseEntity.ok(ApiResponse.success("Toggled"));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteBanner(@PathVariable UUID id) {
-        jdbc.update("DELETE FROM banners WHERE id = ?", id.toString());
+        jdbc.update("DELETE FROM banners WHERE id = ?", id);
         return ResponseEntity.ok(ApiResponse.success("Banner deleted"));
     }
 
@@ -113,7 +113,7 @@ public class AdminBannerController {
             "  bg_color_start, bg_color_end, discount_type, discount_value, min_order_amount, " +
             "  max_discount, valid_until, display_order, is_active) " +
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,true)",
-            id.toString(),
+            id,
             body.getOrDefault("emoji", "🎁"),
             body.get("title"), body.get("description"), body.get("promoCode"),
             body.get("savingText"), body.get("badgeText"),
@@ -151,20 +151,20 @@ public class AdminBannerController {
             maxDiscount   != null ? new BigDecimal(maxDiscount.toString())   : null,
             validUntil != null ? java.sql.Timestamp.valueOf(validUntil.replace("T", " ").replace("Z", "")) : null,
             body.get("displayOrder"),
-            id.toString()
+            id
         );
         return ResponseEntity.ok(ApiResponse.success("Offer updated"));
     }
 
     @PatchMapping("/offers/{id}/toggle")
     public ResponseEntity<ApiResponse<Void>> toggleOffer(@PathVariable UUID id) {
-        jdbc.update("UPDATE offer_banners SET is_active = NOT is_active WHERE id = ?", id.toString());
+        jdbc.update("UPDATE offer_banners SET is_active = NOT is_active WHERE id = ?", id);
         return ResponseEntity.ok(ApiResponse.success("Toggled"));
     }
 
     @DeleteMapping("/offers/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteOffer(@PathVariable UUID id) {
-        jdbc.update("DELETE FROM offer_banners WHERE id = ?", id.toString());
+        jdbc.update("DELETE FROM offer_banners WHERE id = ?", id);
         return ResponseEntity.ok(ApiResponse.success("Offer deleted"));
     }
 }
