@@ -13,4 +13,9 @@ public interface ReservationService {
     ReservationResponse getById(UUID id);
     void cancel(UUID userId, UUID id);
     List<String> getAvailableSlots(UUID branchId, LocalDate date, int partySize);
+
+    // ── Admin ──
+    List<ReservationResponse> adminList(String status);
+    ReservationResponse adminConfirm(UUID id);
+    void adminDelete(UUID id);
 }

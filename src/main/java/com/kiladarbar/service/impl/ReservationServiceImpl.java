@@ -9,7 +9,7 @@ import com.kiladarbar.model.entity.Reservation;
 import com.kiladarbar.model.entity.RestaurantTable;
 import com.kiladarbar.model.entity.User;
 import com.kiladarbar.repository.BranchRepository;
-import com.kiladarbar.repository.OrderRepository;
+import com.kiladarbar.repository.ReservationRepository;
 import com.kiladarbar.repository.UserRepository;
 import com.kiladarbar.service.ReservationService;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +32,7 @@ public class ReservationServiceImpl implements ReservationService {
 
     private final BranchRepository branchRepository;
     private final UserRepository userRepository;
+    private final ReservationRepository reservationRepository;
 
     // Available dinner/lunch slots
     private static final List<LocalTime> AVAILABLE_TIMES = List.of(
@@ -64,8 +65,9 @@ public class ReservationServiceImpl implements ReservationService {
                 .status("CONFIRMED")
                 .build();
 
-        // In a real system, query and assign a table here
-        log.info("Reservation created for {} on {} at {}", req.getCustomerName(), req.getReservedDate(), req.getReservedTime());
+        reservation = reservationRepository.save(reservation);
+        log.info("Reservation {} created for {} on {} at {}", reservation.getId(),
+                req.getCustomerName(), req.getReservedDate(), req.getReservedTime());
 
         return mapToResponse(reservation);
     }
@@ -73,18 +75,55 @@ public class ReservationServiceImpl implements ReservationService {
     @Override
     @Transactional(readOnly = true)
     public List<ReservationResponse> getUserReservations(UUID userId) {
-        return List.of(); // TODO: fetch from repository
+        return reservationRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public ReservationResponse getById(UUID id) {
-        throw new ResourceNotFoundException("Reservation not found");
+        return reservationRepository.findById(id)
+                .map(this::mapToResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found"));
     }
 
     @Override
     public void cancel(UUID userId, UUID id) {
-        log.info("Cancelling reservation {} for user {}", id, userId);
+        Reservation reservation = reservationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found"));
+        if (reservation.getUser() == null || !reservation.getUser().getId().equals(userId)) {
+            throw new ResourceNotFoundException("Reservation not found");
+        }
+        reservation.setStatus("CANCELLED");
+        reservationRepository.save(reservation);
+        log.info("Reservation {} cancelled by user {}", id, userId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReservationResponse> adminList(String status) {
+        List<Reservation> reservations = (status == null || status.isBlank())
+                ? reservationRepository.findAllByOrderByCreatedAtDesc()
+                : reservationRepository.findByStatusOrderByCreatedAtDesc(status);
+        return reservations.stream().map(this::mapToResponse).toList();
+    }
+
+    @Override
+    public ReservationResponse adminConfirm(UUID id) {
+        Reservation reservation = reservationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found"));
+        reservation.setStatus("CONFIRMED");
+        return mapToResponse(reservationRepository.save(reservation));
+    }
+
+    @Override
+    public void adminDelete(UUID id) {
+        if (!reservationRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Reservation not found");
+        }
+        reservationRepository.deleteById(id);
+        log.info("Reservation {} deleted by admin", id);
     }
 
     @Override

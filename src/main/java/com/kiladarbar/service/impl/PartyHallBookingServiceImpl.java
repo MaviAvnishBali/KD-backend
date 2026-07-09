@@ -76,6 +76,25 @@ public class PartyHallBookingServiceImpl implements PartyHallBookingService {
         log.info("Party hall booking {} cancelled by user {}", bookingId, userId);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<PartyHallBookingResponse> adminList(String status) {
+        List<PartyHallBooking> bookings = (status == null || status.isBlank())
+                ? bookingRepository.findAllByOrderByCreatedAtDesc()
+                : bookingRepository.findByStatusOrderByCreatedAtDesc(status);
+        return bookings.stream().map(this::mapToResponse).toList();
+    }
+
+    @Override
+    public PartyHallBookingResponse adminUpdateStatus(UUID bookingId, String status) {
+        PartyHallBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
+        booking.setStatus(status);
+        booking = bookingRepository.save(booking);
+        log.info("Party hall booking {} moved to {} by admin", bookingId, status);
+        return mapToResponse(booking);
+    }
+
     private PartyHallBookingResponse mapToResponse(PartyHallBooking b) {
         return PartyHallBookingResponse.builder()
                 .id(b.getId())

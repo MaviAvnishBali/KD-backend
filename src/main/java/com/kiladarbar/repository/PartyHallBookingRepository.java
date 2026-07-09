@@ -9,4 +9,8 @@ import java.util.UUID;
 public interface PartyHallBookingRepository extends JpaRepository<PartyHallBooking, UUID> {
 
     List<PartyHallBooking> findByUserIdOrderByCreatedAtDesc(UUID userId);
+
+    List<PartyHallBooking> findAllByOrderByCreatedAtDesc();
+
+    List<PartyHallBooking> findByStatusOrderByCreatedAtDesc(String status);
 }

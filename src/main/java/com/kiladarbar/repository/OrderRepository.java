@@ -1,5 +1,6 @@
 package com.kiladarbar.repository;
 
+import com.kiladarbar.dto.projection.CustomerOrderStats;
 import com.kiladarbar.model.entity.Order;
 import com.kiladarbar.model.enums.OrderStatus;
 import com.kiladarbar.model.enums.OrderType;
@@ -11,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -32,4 +34,9 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
                                 @Param("from") LocalDate from,
                                 @Param("to") LocalDate to,
                                 Pageable pageable);
+
+    @Query("SELECT o.user.id AS userId, COUNT(o) AS orderCount, " +
+           "COALESCE(SUM(o.totalAmount), 0) AS totalSpend, MAX(o.createdAt) AS lastOrderAt " +
+           "FROM Order o WHERE o.user.id IN :userIds GROUP BY o.user.id")
+    List<CustomerOrderStats> aggregateForUsers(@Param("userIds") List<UUID> userIds);
 }

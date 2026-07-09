@@ -10,4 +10,8 @@ public interface PartyHallBookingService {
     PartyHallBookingResponse create(UUID userId, CreatePartyHallBookingRequest request);
     List<PartyHallBookingResponse> getUserBookings(UUID userId);
     void cancel(UUID userId, UUID bookingId);
+
+    // ── Admin ──
+    List<PartyHallBookingResponse> adminList(String status);
+    PartyHallBookingResponse adminUpdateStatus(UUID bookingId, String status);
 }
