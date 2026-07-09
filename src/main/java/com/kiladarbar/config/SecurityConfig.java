@@ -23,6 +23,8 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.util.List;
 
 @Configuration
@@ -77,6 +79,15 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Distinguish "not authenticated" (401 → clients can refresh the token)
+                // from "authenticated but forbidden" (403). Without this, Spring defaults
+                // both to 403, which prevents token-refresh on expiry.
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authEx) ->
+                                writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required"))
+                        .accessDeniedHandler((request, response, deniedEx) ->
+                                writeError(response, HttpServletResponse.SC_FORBIDDEN, "You don't have permission to perform this action"))
+                )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/products/**", "/v1/categories/**").permitAll()
@@ -91,6 +102,13 @@ public class SecurityConfig {
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
+    }
+
+    /** Writes a JSON body matching the app's ApiResponse envelope for security errors. */
+    private static void writeError(HttpServletResponse response, int status, String message) throws IOException {
+        response.setStatus(status);
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write("{\"success\":false,\"message\":\"" + message + "\",\"data\":null}");
     }
 
     @Bean
