@@ -1,0 +1,95 @@
+name: Build & Deploy Backend (Staging)
+
+# Push to develop → build (amd64) → push to GHCR → deploy to the OLD Oracle VM.
+# Staging is the old x86 micro box; prod is the new Ampere box (see deploy.yml).
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch: {}   # allow manual runs from the Actions tab
+
+env:
+  IMAGE: ghcr.io/maviavnishbali/kila-api
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest      # amd64 runner — the staging VM is x86, not ARM
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Distinct staging-* tags so amd64 staging images never clobber the arm64
+      # prod images (which use :<sha> / :latest).
+      - name: Build & push image (staging tags)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.IMAGE }}:staging-${{ github.sha }}
+            ${{ env.IMAGE }}:staging
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to staging server
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          SHA: ${{ github.sha }}
+        with:
+          host: ${{ secrets.STAGING_SSH_HOST }}
+          username: ${{ secrets.STAGING_SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: SHA
+          command_timeout: 10m
+          script: |
+            set -e
+            cd /opt/apps/kila-darbar
+            NEW_IMAGE="ghcr.io/maviavnishbali/kila-api:staging-${SHA}"
+
+            # 1. Back up the DB first. pipefail (scoped) so a failed pg_dump
+            # aborts the deploy instead of being masked by gzip's exit 0.
+            mkdir -p ~/backups
+            ( set -o pipefail
+              sudo docker exec kila-postgres pg_dump -U kiladarbar kiladarbar \
+                | gzip > ~/backups/kiladarbar-$(date +%F-%H%M%S).sql.gz )
+            ls -1t ~/backups/*.sql.gz | tail -n +11 | xargs -r rm -f
+
+            # 2. Remember the currently-running image for rollback
+            PREV_IMAGE=$(grep -oE 'image: *[^ ]*kila-api[^ ]*' docker-compose.yml | awk '{print $2}')
+            echo "current: ${PREV_IMAGE}  ->  new: ${NEW_IMAGE}"
+
+            # 3. Pull the new image and point compose at it
+            sudo docker pull "${NEW_IMAGE}"
+            sudo sed -i "s|image: *[^ ]*kila-api[^ ]*|image: ${NEW_IMAGE}|" docker-compose.yml
+            sudo docker compose up -d api
+
+            # 4. Health-gate — roll back on failure (this box boots slowly too).
+            echo "waiting for health (up to 5 min)..."
+            ok=false
+            for i in $(seq 1 60); do
+              if sudo docker exec kila-api wget -qO- http://localhost:8080/api/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
+                ok=true; break
+              fi
+              sleep 5
+            done
+            if [ "$ok" != true ]; then
+              echo "!! health check FAILED — rolling back to ${PREV_IMAGE}"
+              sudo sed -i "s|image: *[^ ]*kila-api[^ ]*|image: ${PREV_IMAGE}|" docker-compose.yml
+              sudo docker compose up -d api
+              exit 1
+            fi
+            echo "✅ deployed ${NEW_IMAGE} to staging and healthy"
