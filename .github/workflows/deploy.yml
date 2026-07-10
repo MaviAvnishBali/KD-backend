@@ -59,10 +59,13 @@ jobs:
             cd /opt/apps/kila-darbar
             NEW_IMAGE="ghcr.io/maviavnishbali/kila-api:${SHA}"
 
-            # 1. Back up the prod DB before touching anything (keep last 10)
+            # 1. Back up the prod DB before touching anything (keep last 10).
+            # pipefail (scoped to a subshell) so a pg_dump failure aborts the deploy
+            # instead of being masked by gzip's exit 0 — never deploy without a backup.
             mkdir -p ~/backups
-            sudo docker exec kila-postgres pg_dump -U kiladarbar kiladarbar \
-              | gzip > ~/backups/kiladarbar-$(date +%F-%H%M%S).sql.gz
+            ( set -o pipefail
+              sudo docker exec kila-postgres pg_dump -U kiladarbar kiladarbar \
+                | gzip > ~/backups/kiladarbar-$(date +%F-%H%M%S).sql.gz )
             ls -1t ~/backups/*.sql.gz | tail -n +11 | xargs -r rm -f
 
             # 2. Remember the currently-running image for rollback
